@@ -140,8 +140,7 @@ module.exports = {
 
     let account = accounts[pickedIndex];
 
-    // Ensure valid OAuth2 token if needed
-    account = await ensureValidAccessTokenForAccount(account);
+     account = await ensureValidAccessTokenForAccount(account);
 
     // render template
     const { BASE_URL } = require('../config');
