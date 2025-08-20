@@ -1,0 +1,40 @@
+{
+  "name": "rotating-mailer",
+  "version": "1.0.0",
+  "description": "Rotating mail sender (nodemailer + MongoDB) with per-account quotas and round-robin rotation using BullMQ",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon --watch src --exec node src/index.js",
+    "lint": "eslint src --fix",
+    "test": "jest"
+  },
+  "dependencies": {
+    "body-parser": "^2.2.0",
+    "bullmq": "^5.58.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
+    "express": "^4.21.2",
+    "express-async-errors": "^3.1.1",
+    "googleapis": "^140.0.1",
+    "handlebars": "^4.7.8",
+    "helmet": "^8.1.0",
+    "ioredis": "^5.7.0",
+    "joi": "^18.0.0",
+    "mongoose": "^8.17.1",
+    "morgan": "^1.10.1",
+    "nodemailer": "^7.0.5",
+    "uuid": "^11.1.0",
+    "winston": "^3.17.0"
+  },
+  "devDependencies": {
+    "eslint": "^9.33.0",
+    "jest": "^30.0.5",
+    "nodemon": "^3.1.10",
+    "prettier": "^3.6.2",
+    "supertest": "^7.1.4"
+  }
+}
