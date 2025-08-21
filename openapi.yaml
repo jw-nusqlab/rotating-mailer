@@ -1,0 +1,485 @@
+openapi: 3.0.3
+info:
+  title: Rotating Mailer API
+  version: "1.0.0"
+  description: Email campaign sender with account rotation, tracking, and OAuth2 support.
+servers:
+  - url: /
+    description: Root (includes / and /api)
+  - url: /api
+    description: API prefix
+
+paths:
+  /:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  message:
+                    type: string
+                example:
+                  ok: true
+                  message: Rotating Mailer API
+
+  /api/status:
+    get:
+      summary: Queue/worker status
+      responses:
+        "200":
+          description: Queue/worker status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueueStatus"
+
+  /api/accounts:
+    post:
+      summary: Create a sending account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountCreateRequest"
+            examples:
+              passwordAuth:
+                value:
+                  email: sender@example.com
+                  host: smtp.example.com
+                  port: 587
+                  secure: false
+                  authType: password
+                  auth:
+                    user: sender@example.com
+                    pass: app-password
+                  maxPerCycle: 100
+              oauth2Auth:
+                value:
+                  email: me@gmail.com
+                  authType: oauth2
+                  auth:
+                    clientId: YOUR_CLIENT_ID
+                    clientSecret: YOUR_CLIENT_SECRET
+                    refreshToken: YOUR_REFRESH_TOKEN
+                    accessToken: OPTIONAL_ACCESS_TOKEN
+                    expires: "2025-12-31T00:00:00.000Z"
+                    redirectUri: https://yourapp.com/api/accounts/oauth2/callback
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    get:
+      summary: List accounts
+      responses:
+        "200":
+          description: Accounts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Account"
+
+  /api/accounts/{email}:
+    patch:
+      summary: Update account (partial)
+      parameters:
+        - name: email
+          in: path
+          required: true
+          schema:
+            type: string
+            format: email
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountUpdateRequest"
+      responses:
+        "200":
+          description: Updated account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+        "404":
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/accounts/oauth2/authorize:
+    post:
+      summary: Generate Google OAuth2 consent URL for an account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OAuthAuthorizeRequest"
+      responses:
+        "200":
+          description: Authorization URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authorizeUrl:
+                    type: string
+                    format: uri
+
+  /api/accounts/oauth2/callback:
+    get:
+      summary: OAuth2 callback; exchanges authorization code for tokens and upserts account
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Encoded JSON containing email and optional client overrides
+      responses:
+        "200":
+          description: Account linked/updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  account:
+                    $ref: "#/components/schemas/Account"
+        "400":
+          description: Missing code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: OAuth2 error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/campaigns:
+    get:
+      summary: List campaigns
+      responses:
+        "200":
+          description: Campaigns
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Campaign"
+
+  /api/campaigns/send:
+    post:
+      summary: Create and start a campaign
+      description: |
+        Snapshots all valid accounts, creates a campaign with deduped recipients, enqueues one job per recipient.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CampaignCreateRequest"
+            example:
+              recipients: ["a@example.com", "b@example.com"]
+              subject: "Welcome"
+              template: "<p>Hello {{name}}</p>"
+              globalData:
+                name: "friend"
+      responses:
+        "201":
+          description: Created; jobs enqueued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CampaignCreateResponse"
+        "400":
+          description: No sending accounts or validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/campaigns/{id}/open/{to}.gif:
+    get:
+      summary: Open tracking pixel
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: to
+          in: path
+          required: true
+          schema:
+            type: string
+            description: URL-encoded recipient email
+      responses:
+        "200":
+          description: 1x1 transparent GIF
+          content:
+            image/gif:
+              schema:
+                type: string
+                format: binary
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              description: no-cache headers are set
+
+  /api/campaigns/{id}/click:
+    get:
+      summary: Click tracking and redirect
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: url
+          in: query
+          required: true
+          schema:
+            type: string
+            description: Encoded destination URL
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            description: Encoded recipient email
+      responses:
+        "302":
+          description: Redirects to destination URL
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+        "400":
+          description: Missing url
+
+components:
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+
+    QueueStatus:
+      type: object
+      properties:
+        queueInitialized:
+          type: boolean
+        workerRunning:
+          type: boolean
+
+    Account:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        host:
+          type: string
+        port:
+          type: integer
+        secure:
+          type: boolean
+        authType:
+          type: string
+          enum: [password, oauth2]
+        auth:
+          oneOf:
+            - $ref: "#/components/schemas/PasswordAuth"
+            - $ref: "#/components/schemas/OAuth2Auth"
+        maxPerCycle:
+          type: integer
+
+    PasswordAuth:
+      type: object
+      properties:
+        user:
+          type: string
+          format: email
+        pass:
+          type: string
+      required: [user, pass]
+
+    OAuth2Auth:
+      type: object
+      properties:
+        clientId:
+          type: string
+        clientSecret:
+          type: string
+        refreshToken:
+          type: string
+        accessToken:
+          type: string
+          nullable: true
+        expires:
+          type: string
+          nullable: true
+          description: ISO date/time or RFC string
+        redirectUri:
+          type: string
+          format: uri
+          nullable: true
+      required: [clientId, clientSecret, refreshToken]
+
+    AccountCreateRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        host:
+          type: string
+        port:
+          type: integer
+        secure:
+          type: boolean
+        authType:
+          type: string
+          enum: [password, oauth2]
+        auth:
+          oneOf:
+            - $ref: "#/components/schemas/PasswordAuth"
+            - $ref: "#/components/schemas/OAuth2Auth"
+        maxPerCycle:
+          type: integer
+      required: [email, auth]
+
+    AccountUpdateRequest:
+      type: object
+      description: Partial account update
+      properties:
+        host:
+          type: string
+        port:
+          type: integer
+        secure:
+          type: boolean
+        authType:
+          type: string
+          enum: [password, oauth2]
+        auth:
+          oneOf:
+            - $ref: "#/components/schemas/PasswordAuth"
+            - $ref: "#/components/schemas/OAuth2Auth"
+        maxPerCycle:
+          type: integer
+
+    Campaign:
+      type: object
+      properties:
+        id:
+          type: string
+        subject:
+          type: string
+        template:
+          type: string
+          description: HTML with Handlebars placeholders
+        globalData:
+          type: object
+          additionalProperties: true
+        accounts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Account"
+        pointer:
+          type: integer
+        recipients:
+          type: array
+          items:
+            $ref: "#/components/schemas/Recipient"
+        clicks:
+          type: integer
+        opens:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    Recipient:
+      type: object
+      properties:
+        to:
+          type: string
+          format: email
+        sent:
+          type: boolean
+        retries:
+          type: integer
+        lastError:
+          type: string
+        openedAt:
+          type: string
+          format: date-time
+        lastClickedAt:
+          type: string
+          format: date-time
+
+    CampaignCreateRequest:
+      type: object
+      properties:
+        recipients:
+          type: array
+          items:
+            type: string
+            format: email
+          minItems: 1
+        subject:
+          type: string
+        template:
+          type: string
+        globalData:
+          type: object
+          additionalProperties: true
+      required: [recipients, subject, template]
+
+    CampaignCreateResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        campaignId:
+          type: string
+
+

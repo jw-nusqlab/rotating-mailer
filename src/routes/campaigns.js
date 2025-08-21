@@ -17,5 +17,7 @@ router.get('/', controller.listCampaigns);
 // tracking
 router.get('/:id/open/:to.gif', controller.trackOpen);
 router.get('/:id/click', controller.trackClick);
+// batch pump (cron-friendly)
+router.post('/:id/pump', controller.pumpCampaign);
 
 module.exports = router;

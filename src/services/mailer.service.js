@@ -1,5 +1,6 @@
 // src/services/mailer.service.js
 const nodemailer = require('nodemailer');
+const crypto = require('crypto');
 const storage = require('../repositories/storage');
 const templateService = require('./template.service');
 const oauth2Service = require('./oauth2.service');
@@ -143,15 +144,23 @@ module.exports = {
      account = await ensureValidAccessTokenForAccount(account);
 
     // render template
-    const { BASE_URL } = require('../config');
+    const { BASE_URL, SECRET_KEY } = require('../config');
     // Inject tracking pixel and wrap links
     const rendered = templateService.render(campaign.template, { ...campaign.globalData, to });
     const openPixel = `<img src="${BASE_URL}/api/campaigns/${campaignId}/open/${encodeURIComponent(to)}.gif" width="1" height="1" style="display:block" alt=""/>`;
-    // naive link rewrite: replace href="..." or href='...'
-    const rewritten = rendered.replace(/href=[\"']([^\"']+)[\"']/gi, (m, p1) => {
-      const trackUrl = `${BASE_URL}/api/campaigns/${campaignId}/click?url=${encodeURIComponent(p1)}&to=${encodeURIComponent(to)}`;
-      logger.debug('Rewriting link', { p1, trackUrl });
-      return `href="${trackUrl}"`;
+    // safer link rewrite: only http(s), skip javascript/mailto
+    const rewritten = rendered.replace(/href=(["\'])\s*([^"\']+)\1/gi, (match, quote, url) => {
+      try {
+        const trimmed = (url || '').trim();
+        if (!/^https?:\/\//i.test(trimmed)) {
+          return match; // skip non-http(s)
+        }
+        const sig = crypto.createHmac('sha256', SECRET_KEY).update(`${campaignId}|${trimmed}|${to}`).digest('hex');
+        const trackUrl = `${BASE_URL}/api/campaigns/${campaignId}/click?url=${encodeURIComponent(trimmed)}&to=${encodeURIComponent(to)}&sig=${sig}`;
+        return `href=${quote}${trackUrl}${quote}`;
+      } catch (_) {
+        return match;
+      }
     });
     const html = `${rewritten}\n${openPixel}`;
 

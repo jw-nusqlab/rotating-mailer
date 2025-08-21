@@ -6,11 +6,11 @@ async function seed() {
   await storage.connect();
   const accounts = [
     {
-      email: 'jameswilliams.nusqlab@gmail.com',
-      host: "smtp.gmail.com",
-      port: 465,
-      secure: false,
-      auth: { user: 'jameswilliams.nusqlab@gmail.com', pass: 'Nusqlab@980' },
+      email: process.env.SEED_EMAIL || 'sender@example.com',
+      host: process.env.SEED_SMTP_HOST || "smtp.gmail.com",
+      port: Number(process.env.SEED_SMTP_PORT || 587),
+      secure: String(process.env.SEED_SMTP_SECURE || 'false') === 'true',
+      auth: { user: process.env.SEED_EMAIL || 'sender@example.com', pass: process.env.SEED_SMTP_PASS || 'your-app-password' },
     }
     // add more test accounts
   ];
