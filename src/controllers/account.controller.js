@@ -32,14 +32,13 @@ exports.updateAccount = async (req, res) => {
   res.send(updated);
 };
 
-// OAuth2 authorization URL generation
+// OAuth2 authorization URL generation (uses env credentials)
 exports.oauthAuthorize = async (req, res) => {
-  const { email, clientId, clientSecret, redirectUri } = req.body;
+  const { email } = req.body;
   if (!email) return res.status(400).send({ error: 'email is required' });
   const oauth2 = require('../services/oauth2.service');
   const url = oauth2.getAuthUrl({
-    state: encodeURIComponent(JSON.stringify({ email, clientId, clientSecret, redirectUri })),
-    overrides: { clientId, clientSecret, redirectUri }
+    state: encodeURIComponent(JSON.stringify({ email }))
   });
   res.send({ authorizeUrl: url });
 };
