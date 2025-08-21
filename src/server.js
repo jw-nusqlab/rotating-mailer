@@ -6,14 +6,11 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const logger = require('./config/logger');
-const path = require('path');
-const fs = require('fs');
-const swaggerUi = require('swagger-ui-express');
-const YAML = require('yamljs');
 const accountsRoute = require('./routes/accounts');
 const campaignsRoute = require('./routes/campaigns');
 const statusRoute = require('./routes/status');
 const errorHandler = require('./middlewares/errorHandler');
+const path = require('path');
 
 module.exports = async function startServer() {
   const app = express();
@@ -22,34 +19,19 @@ module.exports = async function startServer() {
   app.use(bodyParser.json({ limit: '5mb' }));
   app.use(morgan('combined', { stream: { write: msg => logger.info(msg.trim()) } }));
 
-  // OpenAPI spec and Swagger UI
-  const openapiPath = path.resolve(__dirname, '..', 'openapi.yaml');
-  let openapiDoc = null;
-  try {
-    openapiDoc = YAML.load(openapiPath);
-  } catch (e) {
-    logger.error('Failed to load OpenAPI spec', { err: e.message });
-  }
-
-  app.get('/api/openapi.yaml', (req, res) => {
-    res.type('text/yaml');
-    try {
-      const yamlString = fs.readFileSync(openapiPath, 'utf8');
-      res.send(yamlString);
-    } catch (e) {
-      res.status(500).send('Spec not available');
-    }
-  });
-
-  if (openapiDoc) {
-    app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openapiDoc));
-  }
+  // Serve static files from public directory
+  app.use('/public', express.static(path.join(__dirname, '..', 'public')));
 
   app.use('/api/accounts', accountsRoute);
   app.use('/api/campaigns', campaignsRoute);
   app.use('/api/status', statusRoute);
 
   app.get('/', (req, res) => res.json({ ok: true, message: 'Rotating Mailer API' }));
+  
+  // API Documentation
+  app.get('/api/docs', (req, res) => {
+    res.sendFile(path.join(__dirname, '..', 'public', 'api-docs.html'));
+  });
 
   app.use(errorHandler);
 

@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rotating Mailer API Documentation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            background: #2c3e50;
+            color: white;
+            padding: 40px 0;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        
+        .endpoint {
+            background: white;
+            border-radius: 8px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .method {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 0.9rem;
+            margin-right: 10px;
+        }
+        
+        .get { background: #61affe; color: white; }
+        .post { background: #49cc90; color: white; }
+        .patch { background: #fca130; color: white; }
+        .delete { background: #f93e3e; color: white; }
+        
+        .path {
+            font-family: 'Courier New', monospace;
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        .description {
+            margin: 15px 0;
+            color: #666;
+        }
+        
+        .section {
+            margin: 30px 0;
+        }
+        
+        .section h2 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .example {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+        
+        .response {
+            background: #e8f5e8;
+            border: 1px solid #c3e6c3;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+        
+        .test-form {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 20px;
+            margin: 15px 0;
+        }
+        
+        .test-form input, .test-form textarea {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .test-form button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        
+        .test-form button:hover {
+            background: #2980b9;
+        }
+        
+        .response-area {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 10px;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            display: none;
+        }
+        
+        .nav {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .nav a {
+            color: #3498db;
+            text-decoration: none;
+            margin-right: 20px;
+            font-weight: bold;
+        }
+        
+        .nav a:hover {
+            text-decoration: underline;
+        }
+        
+        .status {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+        
+        .status-200 { background: #d4edda; color: #155724; }
+        .status-201 { background: #d4edda; color: #155724; }
+        .status-400 { background: #f8d7da; color: #721c24; }
+        .status-404 { background: #f8d7da; color: #721c24; }
+        .status-500 { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📧 Rotating Mailer API</h1>
+        <p>Email campaign sender with account rotation, tracking, and OAuth2 support</p>
+    </div>
+
+    <div class="container">
+        <div class="nav">
+            <a href="#health">Health</a>
+            <a href="#accounts">Accounts</a>
+            <a href="#campaigns">Campaigns</a>
+            <a href="#oauth">OAuth2</a>
+            <a href="#tracking">Tracking</a>
+            <a href="#status">Status</a>
+        </div>
+
+        <div class="section" id="health">
+            <h2>Health Check</h2>
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <span class="path">/</span>
+                <span class="status status-200">200</span>
+                <div class="description">Health check endpoint</div>
+                <div class="example">curl https://rotating-mailer.vercel.app/</div>
+                <div class="response">{
+  "ok": true,
+  "message": "Rotating Mailer API"
+}</div>
+            </div>
+        </div>
+
+        <div class="section" id="accounts">
+            <h2>Account Management</h2>
+            
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <span class="path">/api/accounts</span>
+                <span class="status status-201">201</span>
+                <div class="description">Create a new sending account</div>
+                <div class="example">curl -X POST https://rotating-mailer.vercel.app/api/accounts \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "sender@example.com",
+    "host": "smtp.gmail.com",
+    "port": 587,
+    "secure": false,
+    "authType": "password",
+    "auth": {
+      "user": "sender@example.com",
+      "pass": "app-password"
+    },
+    "maxPerCycle": 100
+  }'</div>
+                
+                <div class="test-form">
+                    <h4>Test Account Creation</h4>
+                    <input type="text" id="account-email" placeholder="Email" value="sender@example.com">
+                    <input type="text" id="account-host" placeholder="SMTP Host" value="smtp.gmail.com">
+                    <input type="number" id="account-port" placeholder="Port" value="587">
+                    <input type="text" id="account-user" placeholder="Username" value="sender@example.com">
+                    <input type="password" id="account-pass" placeholder="Password">
+                    <button onclick="createAccount()">Create Account</button>
+                    <div id="account-response" class="response-area"></div>
+                </div>
+            </div>
+
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <span class="path">/api/accounts</span>
+                <span class="status status-200">200</span>
+                <div class="description">List all accounts</div>
+                <div class="example">curl https://rotating-mailer.vercel.app/api/accounts</div>
+                <button onclick="listAccounts()">List Accounts</button>
+                <div id="accounts-list" class="response-area"></div>
+            </div>
+
+            <div class="endpoint">
+                <span class="method patch">PATCH</span>
+                <span class="path">/api/accounts/{email}</span>
+                <span class="status status-200">200</span>
+                <div class="description">Update account settings</div>
+                <div class="example">curl -X PATCH https://rotating-mailer.vercel.app/api/accounts/sender@example.com \
+  -H "Content-Type: application/json" \
+  -d '{"maxPerCycle": 50}'</div>
+            </div>
+        </div>
+
+        <div class="section" id="oauth">
+            <h2>OAuth2 Authentication</h2>
+            
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <span class="path">/api/accounts/oauth2/authorize</span>
+                <span class="status status-200">200</span>
+                <div class="description">Generate Google OAuth2 consent URL</div>
+                <div class="example">curl -X POST https://rotating-mailer.vercel.app/api/accounts/oauth2/authorize \
+  -H "Content-Type: application/json" \
+  -d '{"email": "me@gmail.com"}'</div>
+                
+                <div class="test-form">
+                    <h4>Generate OAuth URL</h4>
+                    <input type="email" id="oauth-email" placeholder="Email" value="me@gmail.com">
+                    <button onclick="generateOAuthUrl()">Generate URL</button>
+                    <div id="oauth-response" class="response-area"></div>
+                </div>
+            </div>
+
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <span class="path">/api/accounts/oauth2/callback</span>
+                <span class="status status-200">200</span>
+                <div class="description">OAuth2 callback - exchanges code for tokens</div>
+                <div class="example">https://rotating-mailer.vercel.app/api/accounts/oauth2/callback?code=...</div>
+            </div>
+        </div>
+
+        <div class="section" id="campaigns">
+            <h2>Campaign Management</h2>
+            
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <span class="path">/api/campaigns/send</span>
+                <span class="status status-201">201</span>
+                <div class="description">Create and start a campaign</div>
+                <div class="example">curl -X POST https://rotating-mailer.vercel.app/api/campaigns/send \
+  -H "Content-Type: application/json" \
+  -d '{
+    "recipients": ["user1@example.com", "user2@example.com"],
+    "subject": "Welcome!",
+    "template": "<p>Hello {{name}}</p>",
+    "globalData": {"name": "friend"}
+  }'</div>
+                
+                <div class="test-form">
+                    <h4>Send Campaign</h4>
+                    <textarea id="campaign-recipients" placeholder="Recipients (comma separated)" rows="2">user1@example.com,user2@example.com</textarea>
+                    <input type="text" id="campaign-subject" placeholder="Subject" value="Welcome!">
+                    <textarea id="campaign-template" placeholder="HTML Template" rows="4"><p>Hello {{name}}</p></textarea>
+                    <textarea id="campaign-data" placeholder="Global Data (JSON)" rows="2">{"name": "friend"}</textarea>
+                    <button onclick="sendCampaign()">Send Campaign</button>
+                    <div id="campaign-response" class="response-area"></div>
+                </div>
+            </div>
+
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <span class="path">/api/campaigns</span>
+                <span class="status status-200">200</span>
+                <div class="description">List all campaigns</div>
+                <div class="example">curl https://rotating-mailer.vercel.app/api/campaigns</div>
+                <button onclick="listCampaigns()">List Campaigns</button>
+                <div id="campaigns-list" class="response-area"></div>
+            </div>
+
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <span class="path">/api/campaigns/{id}/pump</span>
+                <span class="status status-200">200</span>
+                <div class="description">Process next batch of recipients (for inline mode)</div>
+                <div class="example">curl -X POST https://rotating-mailer.vercel.app/api/campaigns/{campaign-id}/pump</div>
+            </div>
+        </div>
+
+        <div class="section" id="tracking">
+            <h2>Email Tracking</h2>
+            
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <span class="path">/api/campaigns/{id}/open/{to}.gif</span>
+                <span class="status status-200">200</span>
+                <div class="description">Open tracking pixel (1x1 transparent GIF)</div>
+                <div class="example">https://rotating-mailer.vercel.app/api/campaigns/{campaign-id}/open/{email}.gif</div>
+            </div>
+
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <span class="path">/api/campaigns/{id}/click</span>
+                <span class="status status-302">302</span>
+                <div class="description">Click tracking and redirect</div>
+                <div class="example">https://rotating-mailer.vercel.app/api/campaigns/{campaign-id}/click?url={encoded-url}&to={email}&sig={signature}</div>
+            </div>
+        </div>
+
+        <div class="section" id="status">
+            <h2>System Status</h2>
+            
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <span class="path">/api/status</span>
+                <span class="status status-200">200</span>
+                <div class="description">Queue and worker status</div>
+                <div class="example">curl https://rotating-mailer.vercel.app/api/status</div>
+                <div class="response">{
+  "queueInitialized": true,
+  "workerRunning": true
+}</div>
+                <button onclick="checkStatus()">Check Status</button>
+                <div id="status-response" class="response-area"></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Environment Variables</h2>
+            <div class="example"># Required
+MONGODB_URI=mongodb+srv://...
+SECRET_KEY=your-secret-key-32-chars-minimum
+
+# Optional
+REDIS_URL=redis://... (only if QUEUE_MODE=bullmq)
+QUEUE_MODE=inline (default) or bullmq
+PROCESS_BATCH_SIZE=5
+BASE_URL=https://your-app.vercel.app
+
+# Email Configuration
+SEND_DELAY_MS=300
+MAX_RETRIES_PER_EMAIL=3
+ACCOUNT_FAILURE_LIMIT=5
+ACCOUNT_DISABLE_MINUTES=20
+
+# Google OAuth2 (optional)
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+GOOGLE_OAUTH_CALLBACK_URL=...</div>
+        </div>
+    </div>
+
+    <script>
+        const BASE_URL = window.location.origin;
+        
+        async function makeRequest(url, options = {}) {
+            try {
+                const response = await fetch(url, {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...options.headers
+                    },
+                    ...options
+                });
+                const data = await response.text();
+                return { status: response.status, data };
+            } catch (error) {
+                return { status: 'Error', data: error.message };
+            }
+        }
+
+        function showResponse(elementId, response) {
+            const element = document.getElementById(elementId);
+            element.style.display = 'block';
+            element.textContent = `Status: ${response.status}\n\n${response.data}`;
+        }
+
+        async function createAccount() {
+            const email = document.getElementById('account-email').value;
+            const host = document.getElementById('account-host').value;
+            const port = parseInt(document.getElementById('account-port').value);
+            const user = document.getElementById('account-user').value;
+            const pass = document.getElementById('account-pass').value;
+
+            const data = {
+                email,
+                host,
+                port,
+                secure: false,
+                authType: 'password',
+                auth: { user, pass },
+                maxPerCycle: 100
+            };
+
+            const response = await makeRequest(`${BASE_URL}/api/accounts`, {
+                method: 'POST',
+                body: JSON.stringify(data)
+            });
+
+            showResponse('account-response', response);
+        }
+
+        async function listAccounts() {
+            const response = await makeRequest(`${BASE_URL}/api/accounts`);
+            showResponse('accounts-list', response);
+        }
+
+        async function generateOAuthUrl() {
+            const email = document.getElementById('oauth-email').value;
+            const data = { email };
+
+            const response = await makeRequest(`${BASE_URL}/api/accounts/oauth2/authorize`, {
+                method: 'POST',
+                body: JSON.stringify(data)
+            });
+
+            showResponse('oauth-response', response);
+        }
+
+        async function sendCampaign() {
+            const recipients = document.getElementById('campaign-recipients').value.split(',').map(r => r.trim());
+            const subject = document.getElementById('campaign-subject').value;
+            const template = document.getElementById('campaign-template').value;
+            const globalData = JSON.parse(document.getElementById('campaign-data').value || '{}');
+
+            const data = { recipients, subject, template, globalData };
+
+            const response = await makeRequest(`${BASE_URL}/api/campaigns/send`, {
+                method: 'POST',
+                body: JSON.stringify(data)
+            });
+
+            showResponse('campaign-response', response);
+        }
+
+        async function listCampaigns() {
+            const response = await makeRequest(`${BASE_URL}/api/campaigns`);
+            showResponse('campaigns-list', response);
+        }
+
+        async function checkStatus() {
+            const response = await makeRequest(`${BASE_URL}/api/status`);
+            showResponse('status-response', response);
+        }
+
+        // Auto-check status on page load
+        window.onload = function() {
+            checkStatus();
+        };
+    </script>
+</body>
+</html>
