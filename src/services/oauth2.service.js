@@ -14,8 +14,7 @@ function createOAuthClient(overrides = {}) {
 
 module.exports = {
   getAuthUrl: ({ state, scopes, overrides } = {}) => {
-    // ignore overrides to force using env config
-    const oauth2Client = createOAuthClient();
+    const oauth2Client = createOAuthClient(overrides);
     const url = oauth2Client.generateAuthUrl({
       access_type: 'offline',
       prompt: 'consent',
@@ -27,13 +26,13 @@ module.exports = {
   },
 
   exchangeCodeForTokens: async ({ code, overrides } = {}) => {
-    const oauth2Client = createOAuthClient();
+    const oauth2Client = createOAuthClient(overrides);
     const { tokens } = await oauth2Client.getToken(code);
     return tokens; // { access_token, refresh_token, expiry_date, ... }
   },
 
   refreshAccessToken: async ({ refreshToken, overrides } = {}) => {
-    const oauth2Client = createOAuthClient();
+    const oauth2Client = createOAuthClient(overrides);
     oauth2Client.setCredentials({ refresh_token: refreshToken });
     const { credentials } = await oauth2Client.refreshAccessToken();
     return credentials; // { access_token, expiry_date, ... }

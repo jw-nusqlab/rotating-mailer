@@ -40,7 +40,10 @@ router.patch('/:email', controller.updateAccount);
 
 // OAuth2 routes
 const oauthAuthorizeSchema = Joi.object({
-  email: Joi.string().email().required()
+  email: Joi.string().email().required(),
+  clientId: Joi.string().optional(),
+  clientSecret: Joi.string().optional(),
+  redirectUri: Joi.string().uri().optional()
 });
 
 router.post('/oauth2/authorize', validateBody(oauthAuthorizeSchema), controller.oauthAuthorize);
