@@ -14,6 +14,7 @@ const sendSchema = Joi.object({
 
 router.post('/send', validateBody(sendSchema), controller.sendCampaign);
 router.get('/', controller.listCampaigns);
+router.delete('/:id', controller.deleteCampaign);
 // tracking
 router.get('/:id/open/:to.gif', controller.trackOpen);
 router.get('/:id/click', controller.trackClick);

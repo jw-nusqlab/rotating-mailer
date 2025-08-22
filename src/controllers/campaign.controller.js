@@ -126,3 +126,17 @@ exports.pumpCampaign = async (req, res) => {
   }
   res.send({ ok: true, processed: slice.length, remaining: pending.length - slice.length });
 };
+
+// Delete campaign
+exports.deleteCampaign = async (req, res) => {
+  const { id } = req.params;
+  const campaign = await storage.getCampaignById(id);
+  if (!campaign) return res.status(404).send({ error: 'Campaign not found' });
+  
+  try {
+    await storage.removeCampaign(id);
+    res.status(204).send();
+  } catch (error) {
+    res.status(500).send({ error: 'Failed to delete campaign' });
+  }
+};
