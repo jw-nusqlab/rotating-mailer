@@ -34,6 +34,27 @@ function computeProgress(campaign) {
   return patch;
 }
 
+async function finalizeCampaignIfDone(campaignId) {
+  try {
+    const fresh = await storage.getCampaignById(campaignId);
+    if (!fresh) return;
+    const progress = computeProgress(fresh);
+    const needsUpdate =
+      progress.totalCount !== fresh.totalCount ||
+      progress.sentCount !== fresh.sentCount ||
+      progress.failedCount !== fresh.failedCount ||
+      progress.status !== fresh.status ||
+      (progress.status === 'completed' && !fresh.completedAt);
+    if (needsUpdate) {
+      const patch = { ...progress };
+      if (progress.status === 'completed' && !fresh.completedAt) {
+        patch.completedAt = new Date();
+      }
+      await storage.updateCampaign(campaignId, patch);
+    }
+  } catch (_) {}
+}
+
 async function ensureValidAccessTokenForAccount(account) {
   if (account.authType !== 'oauth2') return account;
   const auth = account.auth || {};
@@ -131,9 +152,10 @@ module.exports = {
 
     // Try across available accounts before giving up on this recipient
     const totalAccounts = accounts.length;
-    let attempts = 0;
     let sentOk = false;
     let sawTransient = false;
+    const startPointer = Number.isInteger(campaign.pointer) ? campaign.pointer : 0;
+    const order = Array.from({ length: totalAccounts }, (_, i) => (startPointer + i) % totalAccounts);
 
     // render template
     const { BASE_URL, SECRET_KEY } = require('../config');
@@ -156,18 +178,13 @@ module.exports = {
     });
     const html = `${rewritten}\n${openPixel}`;
 
-    while (attempts < totalAccounts && !sentOk) {
-      const idx = campaign.pointer % totalAccounts;
+    for (const idx of order) {
       let account = accounts[idx];
       // skip disabled or out of quota
       if (account.disabledUntil && new Date(account.disabledUntil) > new Date()) {
-        campaign.pointer = (campaign.pointer + 1) % totalAccounts;
-        attempts++;
         continue;
       }
       if (!account.remaining || account.remaining <= 0) {
-        campaign.pointer = (campaign.pointer + 1) % totalAccounts;
-        attempts++;
         continue;
       }
 
@@ -186,7 +203,8 @@ module.exports = {
         await transporter.sendMail(mailOptions);
         account.remaining = (account.remaining || account.maxPerCycle) - 1;
         account.failCount = 0;
-        campaign.pointer = (idx + 1) % totalAccounts;
+        // advance pointer exactly one step from original start to enforce rotation per recipient
+        campaign.pointer = (startPointer + 1) % totalAccounts;
         campaign.recipients[recipientIndex].sent = true;
         campaign.recipients[recipientIndex].failed = false;
         campaign.recipients[recipientIndex].lastError = null;
@@ -194,6 +212,7 @@ module.exports = {
         const progress = computeProgress(campaign);
         const patch = { accounts, pointer: campaign.pointer, recipients: campaign.recipients, ...progress };
         await storage.updateCampaign(campaignId, patch);
+        await finalizeCampaignIfDone(campaignId);
         logger.info(`Email sent: ${to} via ${account.email}`);
         await _sleep(SEND_DELAY_MS);
         sentOk = true;
@@ -206,14 +225,14 @@ module.exports = {
           account.failCount = 0;
           logger.debug('Account temporarily disabled', { account: account.email, until: account.disabledUntil });
         }
-        campaign.pointer = (idx + 1) % totalAccounts;
+        // do not advance pointer on failure; continue to next account in the computed order
         const message = (err && err.message) ? err.message : String(err);
         const permanent = /Missing credentials|Invalid login|EAUTH|Username and Password not accepted|ENOTFOUND|ECONNREFUSED/i.test(message);
         if (!permanent) sawTransient = true;
         campaign.recipients[recipientIndex].lastError = message;
         const progressFail = computeProgress(campaign);
         await storage.updateCampaign(campaignId, { accounts, pointer: campaign.pointer, recipients: campaign.recipients, ...progressFail });
-        attempts++;
+        await finalizeCampaignIfDone(campaignId);
         continue;
       }
     }
@@ -229,6 +248,7 @@ module.exports = {
         patch = { ...patch, ...progressDone };
       }
       await storage.updateCampaign(campaignId, patch);
+      await finalizeCampaignIfDone(campaignId);
       if (sawTransient && currentRetries <= MAX_RETRIES_PER_EMAIL) {
         const queueService = require('./queue.service');
         const retryJobId = `${campaignId}:${to}:retry:${currentRetries}`;
