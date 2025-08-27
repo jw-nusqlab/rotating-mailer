@@ -149,6 +149,15 @@ module.exports = {
       logger.debug('No accounts snapshot in campaign', { campaignId });
       return;
     }
+    
+    // Log the campaign state at the start of processing each recipient
+    logger.debug('Campaign state at start', { 
+      campaignId, 
+      to, 
+      currentPointer: campaign.pointer,
+      totalAccounts: accounts.length,
+      accountEmails: accounts.map(a => a.email)
+    });
 
     // Try across available accounts before giving up on this recipient
     const totalAccounts = accounts.length;
@@ -159,6 +168,16 @@ module.exports = {
     // For this recipient, start from the current pointer and try accounts in order
     // This ensures each recipient gets a different starting account for rotation
     const order = Array.from({ length: totalAccounts }, (_, i) => (startPointer + i) % totalAccounts);
+    
+    // Debug logging to see what's happening with rotation
+    logger.debug('Account rotation debug', { 
+      campaignId, 
+      to, 
+      startPointer, 
+      totalAccounts, 
+      order, 
+      currentPointer: campaign.pointer 
+    });
 
     // render template
     const { BASE_URL, SECRET_KEY } = require('../config');
@@ -208,7 +227,18 @@ module.exports = {
         account.failCount = 0;
         // advance pointer to the next account for the next recipient
         // This ensures strict round-robin: A -> B -> C -> A -> B -> C...
+        const oldPointer = campaign.pointer;
         campaign.pointer = (startPointer + 1) % totalAccounts;
+        
+        // Debug logging for pointer update
+        logger.debug('Pointer updated', { 
+          campaignId, 
+          to, 
+          oldPointer, 
+          newPointer: campaign.pointer,
+          startPointer,
+          totalAccounts
+        });
         campaign.recipients[recipientIndex].sent = true;
         campaign.recipients[recipientIndex].failed = false;
         campaign.recipients[recipientIndex].lastError = null;
