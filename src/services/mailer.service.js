@@ -109,39 +109,11 @@ module.exports = {
       return;
     }
 
-    // find next usable account
-    let pickedIndex = -1;
+    // Try across available accounts before giving up on this recipient
     const totalAccounts = accounts.length;
-    let tries = 0;
-
-    while (tries < totalAccounts) {
-      const idx = campaign.pointer % totalAccounts;
-      const acc = accounts[idx];
-      // check disabled
-      if (acc.disabledUntil && new Date(acc.disabledUntil) > new Date()) {
-        campaign.pointer = (campaign.pointer + 1) % totalAccounts;
-        tries++;
-        continue;
-      }
-      if (acc.remaining > 0) {
-        pickedIndex = idx;
-        break;
-      } else {
-        campaign.pointer = (campaign.pointer + 1) % totalAccounts;
-        tries++;
-      }
-    }
-
-    // if none picked -> reset remaining = maxPerCycle and pick pointer 0
-    if (pickedIndex === -1) {
-      accounts.forEach(a => (a.remaining = a.maxPerCycle));
-      campaign.pointer = 0;
-      pickedIndex = 0;
-    }
-
-    let account = accounts[pickedIndex];
-
-     account = await ensureValidAccessTokenForAccount(account);
+    let attempts = 0;
+    let sentOk = false;
+    let sawTransient = false;
 
     // render template
     const { BASE_URL, SECRET_KEY } = require('../config');
@@ -164,54 +136,74 @@ module.exports = {
     });
     const html = `${rewritten}\n${openPixel}`;
 
-    const mailOptions = {
-      from: account.email,
-      to,
-      subject: campaign.subject,
-      html,
- 
-    };
-
-    try {
-      const transporter = getTransportForAccount(account);
-      await transporter.sendMail(mailOptions);
-      // success: decrement remaining, reset failCount
-      account.remaining = (account.remaining || account.maxPerCycle) - 1;
-      account.failCount = 0;
-      campaign.pointer = (pickedIndex + 1) % totalAccounts;
-      // mark recipient as sent and persist
-      campaign.recipients[recipientIndex].sent = true;
-      campaign.recipients[recipientIndex].lastError = null;
-      await storage.updateCampaign(campaignId, { accounts: accounts, pointer: campaign.pointer, recipients: campaign.recipients });
-      logger.info(`Email sent: ${to} via ${account.email}`);
-      await _sleep(SEND_DELAY_MS);
-    } catch (err) {
-      logger.error('Send failed', { campaignId, to, account: account.email, err: err.message || err });
-      // mark failure
-      account.failCount = (account.failCount || 0) + 1;
-      if (account.failCount >= ACCOUNT_FAILURE_LIMIT) {
-        account.disabledUntil = new Date(Date.now() + ACCOUNT_DISABLE_MINUTES * 60 * 1000);
-        account.failCount = 0;
-        logger.debug('Account temporarily disabled', { account: account.email, until: account.disabledUntil });
+    while (attempts < totalAccounts && !sentOk) {
+      const idx = campaign.pointer % totalAccounts;
+      let account = accounts[idx];
+      // skip disabled or out of quota
+      if (account.disabledUntil && new Date(account.disabledUntil) > new Date()) {
+        campaign.pointer = (campaign.pointer + 1) % totalAccounts;
+        attempts++;
+        continue;
       }
-      campaign.pointer = (pickedIndex + 1) % totalAccounts;
-      // increment retries for this recipient and persist
+      if (!account.remaining || account.remaining <= 0) {
+        campaign.pointer = (campaign.pointer + 1) % totalAccounts;
+        attempts++;
+        continue;
+      }
+
+      // ensure token if oauth2
+      account = await ensureValidAccessTokenForAccount(account);
+
+      const mailOptions = {
+        from: account.email,
+        to,
+        subject: campaign.subject,
+        html
+      };
+
+      try {
+        const transporter = getTransportForAccount(account);
+        await transporter.sendMail(mailOptions);
+        account.remaining = (account.remaining || account.maxPerCycle) - 1;
+        account.failCount = 0;
+        campaign.pointer = (idx + 1) % totalAccounts;
+        campaign.recipients[recipientIndex].sent = true;
+        campaign.recipients[recipientIndex].lastError = null;
+        await storage.updateCampaign(campaignId, { accounts, pointer: campaign.pointer, recipients: campaign.recipients });
+        logger.info(`Email sent: ${to} via ${account.email}`);
+        await _sleep(SEND_DELAY_MS);
+        sentOk = true;
+        break;
+      } catch (err) {
+        logger.error('Send failed', { campaignId, to, account: account.email, err: err.message || err });
+        account.failCount = (account.failCount || 0) + 1;
+        if (account.failCount >= ACCOUNT_FAILURE_LIMIT) {
+          account.disabledUntil = new Date(Date.now() + ACCOUNT_DISABLE_MINUTES * 60 * 1000);
+          account.failCount = 0;
+          logger.debug('Account temporarily disabled', { account: account.email, until: account.disabledUntil });
+        }
+        campaign.pointer = (idx + 1) % totalAccounts;
+        const message = (err && err.message) ? err.message : String(err);
+        const permanent = /Missing credentials|Invalid login|EAUTH|Username and Password not accepted|ENOTFOUND|ECONNREFUSED/i.test(message);
+        if (!permanent) sawTransient = true;
+        campaign.recipients[recipientIndex].lastError = message;
+        await storage.updateCampaign(campaignId, { accounts, pointer: campaign.pointer, recipients: campaign.recipients });
+        attempts++;
+        continue;
+      }
+    }
+
+    if (!sentOk) {
       const currentRetries = (campaign.recipients[recipientIndex].retries || 0) + 1;
       campaign.recipients[recipientIndex].retries = currentRetries;
-      campaign.recipients[recipientIndex].lastError = err.message || String(err);
-      await storage.updateCampaign(campaignId, { accounts: accounts, pointer: campaign.pointer, recipients: campaign.recipients });
-      // Determine if error looks permanent; if so, do not retry
-      const errorMessage = (err && err.message) ? err.message : String(err);
-      const looksPermanent = /Missing credentials|Invalid login|EAUTH|Username and Password not accepted|ENOTFOUND|ECONNREFUSED/i.test(errorMessage);
-
-      // requeue recipient if retry not exceeded and error not permanent
-      if (!looksPermanent && currentRetries <= MAX_RETRIES_PER_EMAIL) {
+      await storage.updateCampaign(campaignId, { accounts, recipients: campaign.recipients });
+      if (sawTransient && currentRetries <= MAX_RETRIES_PER_EMAIL) {
         const queueService = require('./queue.service');
         const retryJobId = `${campaignId}:${to}:retry:${currentRetries}`;
         await queueService.addJob('send-email', { campaignId, to }, { delay: 5000, jobId: retryJobId });
         logger.debug('Requeued recipient for retry', { to, campaignId, retries: currentRetries });
       } else {
-        logger.debug('Will not retry recipient', { to, campaignId, reason: looksPermanent ? 'permanent-error' : 'max-retries' });
+        logger.debug('No send succeeded; not retrying', { to, campaignId });
       }
     }
   }
