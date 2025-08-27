@@ -203,8 +203,8 @@ module.exports = {
         await transporter.sendMail(mailOptions);
         account.remaining = (account.remaining || account.maxPerCycle) - 1;
         account.failCount = 0;
-        // advance pointer exactly one step from original start to enforce rotation per recipient
-        campaign.pointer = (startPointer + 1) % totalAccounts;
+        // advance pointer to the next after the actual account used
+        campaign.pointer = (idx + 1) % totalAccounts;
         campaign.recipients[recipientIndex].sent = true;
         campaign.recipients[recipientIndex].failed = false;
         campaign.recipients[recipientIndex].lastError = null;
