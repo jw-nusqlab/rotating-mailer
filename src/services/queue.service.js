@@ -85,6 +85,17 @@ module.exports = {
     return await queue.add(name, data, options);
   },
 
+  addJobs: async function addJobs(jobs) {
+    if (!queue) throw new Error('Queue not initialized');
+    // normalize options
+    const normalized = jobs.map(j => ({
+      name: j.name,
+      data: j.data,
+      opts: { attempts: 1, removeOnComplete: true, removeOnFail: false, ...(j.opts || {}) }
+    }));
+    return await queue.addBulk(normalized);
+  },
+
   status: async function status() {
     return {
       queueInitialized: !!queue,

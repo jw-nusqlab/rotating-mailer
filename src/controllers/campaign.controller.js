@@ -58,8 +58,18 @@ exports.sendCampaign = async (req, res) => {
   const recipientsToEnqueue = QUEUE_MODE === 'inline'
     ? campaign.recipients.slice(0, PROCESS_BATCH_SIZE)
     : campaign.recipients;
-  for (const r of recipientsToEnqueue) {
-    await queueService.addJob('send-email', { campaignId: campaign.id, to: r.to }, { jobId: `${campaign.id}:${r.to}` });
+  // use bulk enqueue when not inline
+  if (QUEUE_MODE !== 'inline') {
+    const bulk = recipientsToEnqueue.map(r => ({
+      name: 'send-email',
+      data: { campaignId: campaign.id, to: r.to },
+      opts: { jobId: `${campaign.id}:${r.to}` }
+    }));
+    await queueService.addJobs(bulk);
+  } else {
+    for (const r of recipientsToEnqueue) {
+      await queueService.addJob('send-email', { campaignId: campaign.id, to: r.to }, { jobId: `${campaign.id}:${r.to}` });
+    }
   }
 
   return res.status(201).send({ ok: true, campaignId: campaign.id });
