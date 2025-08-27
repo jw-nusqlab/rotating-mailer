@@ -155,6 +155,9 @@ module.exports = {
     let sentOk = false;
     let sawTransient = false;
     const startPointer = Number.isInteger(campaign.pointer) ? campaign.pointer : 0;
+    
+    // For this recipient, start from the current pointer and try accounts in order
+    // This ensures each recipient gets a different starting account for rotation
     const order = Array.from({ length: totalAccounts }, (_, i) => (startPointer + i) % totalAccounts);
 
     // render template
@@ -203,8 +206,9 @@ module.exports = {
         await transporter.sendMail(mailOptions);
         account.remaining = (account.remaining || account.maxPerCycle) - 1;
         account.failCount = 0;
-        // advance pointer to the next after the actual account used
-        campaign.pointer = (idx + 1) % totalAccounts;
+        // advance pointer to the next account for the next recipient
+        // This ensures strict round-robin: A -> B -> C -> A -> B -> C...
+        campaign.pointer = (startPointer + 1) % totalAccounts;
         campaign.recipients[recipientIndex].sent = true;
         campaign.recipients[recipientIndex].failed = false;
         campaign.recipients[recipientIndex].lastError = null;
