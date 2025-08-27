@@ -3,7 +3,7 @@ const storage = require('../repositories/storage');
 const queueService = require('../services/queue.service');
 const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
-const { QUEUE_MODE, PROCESS_BATCH_SIZE, SECRET_KEY } = require('../config');
+const { SECRET_KEY } = require('../config');
 
 exports.sendCampaign = async (req, res) => {
   const { recipients, subject, template, globalData } = req.body;
@@ -54,23 +54,13 @@ exports.sendCampaign = async (req, res) => {
 
   await storage.addCampaign(campaign);
 
-  // enqueue recipient jobs
-  const recipientsToEnqueue = QUEUE_MODE === 'inline'
-    ? campaign.recipients.slice(0, PROCESS_BATCH_SIZE)
-    : campaign.recipients;
-  // use bulk enqueue when not inline
-  if (QUEUE_MODE !== 'inline') {
-    const bulk = recipientsToEnqueue.map(r => ({
-      name: 'send-email',
-      data: { campaignId: campaign.id, to: r.to },
-      opts: { jobId: `${campaign.id}:${r.to}` }
-    }));
-    await queueService.addJobs(bulk);
-  } else {
-    for (const r of recipientsToEnqueue) {
-      await queueService.addJob('send-email', { campaignId: campaign.id, to: r.to }, { jobId: `${campaign.id}:${r.to}` });
-    }
-  }
+  // enqueue all recipient jobs in bulk
+  const bulk = campaign.recipients.map(r => ({
+    name: 'send-email',
+    data: { campaignId: campaign.id, to: r.to },
+    opts: { jobId: `${campaign.id}:${r.to}` }
+  }));
+  await queueService.addJobs(bulk);
 
   return res.status(201).send({ ok: true, campaignId: campaign.id });
 };
