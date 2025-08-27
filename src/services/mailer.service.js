@@ -14,6 +14,26 @@ const {
 
 const transports = new Map();
 
+function computeProgress(campaign) {
+  const recipients = campaign.recipients || [];
+  const totalCount = campaign.totalCount || recipients.length;
+  const sentCount = recipients.filter(r => r.sent).length;
+  const failedCount = recipients.filter(r => r.failed).length;
+  const allDone = sentCount + failedCount >= totalCount && totalCount > 0;
+  const patch = {
+    totalCount,
+    sentCount,
+    failedCount
+  };
+  if (allDone) {
+    patch.status = 'completed';
+    if (!campaign.completedAt) patch.completedAt = new Date();
+  } else {
+    patch.status = 'ongoing';
+  }
+  return patch;
+}
+
 async function ensureValidAccessTokenForAccount(account) {
   if (account.authType !== 'oauth2') return account;
   const auth = account.auth || {};
@@ -170,15 +190,9 @@ module.exports = {
         campaign.recipients[recipientIndex].sent = true;
         campaign.recipients[recipientIndex].failed = false;
         campaign.recipients[recipientIndex].lastError = null;
-        // update counts
-        const sentCount = (campaign.sentCount || 0) + 1;
-        const totalCount = campaign.totalCount || (campaign.recipients || []).length;
-        const allDone = sentCount + (campaign.failedCount || 0) >= totalCount;
-        const patch = { accounts, pointer: campaign.pointer, recipients: campaign.recipients, sentCount };
-        if (allDone) {
-          patch.status = 'completed';
-          patch.completedAt = new Date();
-        }
+        // recompute progress deterministically
+        const progress = computeProgress(campaign);
+        const patch = { accounts, pointer: campaign.pointer, recipients: campaign.recipients, ...progress };
         await storage.updateCampaign(campaignId, patch);
         logger.info(`Email sent: ${to} via ${account.email}`);
         await _sleep(SEND_DELAY_MS);
@@ -197,7 +211,8 @@ module.exports = {
         const permanent = /Missing credentials|Invalid login|EAUTH|Username and Password not accepted|ENOTFOUND|ECONNREFUSED/i.test(message);
         if (!permanent) sawTransient = true;
         campaign.recipients[recipientIndex].lastError = message;
-        await storage.updateCampaign(campaignId, { accounts, pointer: campaign.pointer, recipients: campaign.recipients });
+        const progressFail = computeProgress(campaign);
+        await storage.updateCampaign(campaignId, { accounts, pointer: campaign.pointer, recipients: campaign.recipients, ...progressFail });
         attempts++;
         continue;
       }
@@ -210,14 +225,8 @@ module.exports = {
       let patch = { accounts, recipients: campaign.recipients };
       if (!(sawTransient && currentRetries <= MAX_RETRIES_PER_EMAIL)) {
         campaign.recipients[recipientIndex].failed = true;
-        const failedCount = (campaign.failedCount || 0) + 1;
-        const totalCount = campaign.totalCount || (campaign.recipients || []).length;
-        const allDone = (campaign.sentCount || 0) + failedCount >= totalCount;
-        patch.failedCount = failedCount;
-        if (allDone) {
-          patch.status = 'completed';
-          patch.completedAt = new Date();
-        }
+        const progressDone = computeProgress(campaign);
+        patch = { ...patch, ...progressDone };
       }
       await storage.updateCampaign(campaignId, patch);
       if (sawTransient && currentRetries <= MAX_RETRIES_PER_EMAIL) {
