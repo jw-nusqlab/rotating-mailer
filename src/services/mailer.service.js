@@ -168,8 +168,18 @@ module.exports = {
         account.failCount = 0;
         campaign.pointer = (idx + 1) % totalAccounts;
         campaign.recipients[recipientIndex].sent = true;
+        campaign.recipients[recipientIndex].failed = false;
         campaign.recipients[recipientIndex].lastError = null;
-        await storage.updateCampaign(campaignId, { accounts, pointer: campaign.pointer, recipients: campaign.recipients });
+        // update counts
+        const sentCount = (campaign.sentCount || 0) + 1;
+        const totalCount = campaign.totalCount || (campaign.recipients || []).length;
+        const allDone = sentCount + (campaign.failedCount || 0) >= totalCount;
+        const patch = { accounts, pointer: campaign.pointer, recipients: campaign.recipients, sentCount };
+        if (allDone) {
+          patch.status = 'completed';
+          patch.completedAt = new Date();
+        }
+        await storage.updateCampaign(campaignId, patch);
         logger.info(`Email sent: ${to} via ${account.email}`);
         await _sleep(SEND_DELAY_MS);
         sentOk = true;
@@ -196,7 +206,20 @@ module.exports = {
     if (!sentOk) {
       const currentRetries = (campaign.recipients[recipientIndex].retries || 0) + 1;
       campaign.recipients[recipientIndex].retries = currentRetries;
-      await storage.updateCampaign(campaignId, { accounts, recipients: campaign.recipients });
+      // If no retry will be scheduled, mark as failed and update counts
+      let patch = { accounts, recipients: campaign.recipients };
+      if (!(sawTransient && currentRetries <= MAX_RETRIES_PER_EMAIL)) {
+        campaign.recipients[recipientIndex].failed = true;
+        const failedCount = (campaign.failedCount || 0) + 1;
+        const totalCount = campaign.totalCount || (campaign.recipients || []).length;
+        const allDone = (campaign.sentCount || 0) + failedCount >= totalCount;
+        patch.failedCount = failedCount;
+        if (allDone) {
+          patch.status = 'completed';
+          patch.completedAt = new Date();
+        }
+      }
+      await storage.updateCampaign(campaignId, patch);
       if (sawTransient && currentRetries <= MAX_RETRIES_PER_EMAIL) {
         const queueService = require('./queue.service');
         const retryJobId = `${campaignId}:${to}:retry:${currentRetries}`;

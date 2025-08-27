@@ -28,7 +28,7 @@ exports.sendCampaign = async (req, res) => {
 
   const campaign = {
     id: campaignId,
-    recipients: uniqueRecipients.map(r => ({ to: r, retries: 0, sent: false })),
+    recipients: uniqueRecipients.map(r => ({ to: r, retries: 0, sent: false, failed: false })),
     subject,
     template,
     globalData: globalData || {},
@@ -45,7 +45,11 @@ exports.sendCampaign = async (req, res) => {
       disabledUntil: a.disabledUntil || null
     })),
     createdAt: new Date(),
-    pointer: 0
+    pointer: 0,
+    status: 'ongoing',
+    totalCount: uniqueRecipients.length,
+    sentCount: 0,
+    failedCount: 0
   };
 
   await storage.addCampaign(campaign);
