@@ -87,13 +87,13 @@ module.exports = {
 
   addJobs: async function addJobs(jobs) {
     if (!queue) throw new Error('Queue not initialized');
-    // normalize options
-    const normalized = jobs.map(j => ({
-      name: j.name,
-      data: j.data,
-      opts: { attempts: 1, removeOnComplete: true, removeOnFail: false, ...(j.opts || {}) }
-    }));
-    return await queue.addBulk(normalized);
+    const results = await Promise.all(
+      jobs.map(j => {
+        const opts = { attempts: 1, removeOnComplete: true, removeOnFail: false, ...(j.opts || {}) };
+        return queue.add(j.name, j.data, opts);
+      })
+    );
+    return results;
   },
 
   status: async function status() {
