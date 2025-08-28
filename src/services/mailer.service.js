@@ -150,34 +150,20 @@ module.exports = {
       return;
     }
     
-    // Log the campaign state at the start of processing each recipient
-    logger.debug('Campaign state at start', { 
-      campaignId, 
-      to, 
-      currentPointer: campaign.pointer,
-      totalAccounts: accounts.length,
-      accountEmails: accounts.map(a => a.email)
-    });
-
-    // Try across available accounts before giving up on this recipient
+    // SIMPLE ROTATION LOGIC: Use recipient's position to determine which account to use
+    // This eliminates race conditions and ensures perfect round-robin rotation
     const totalAccounts = accounts.length;
     let sentOk = false;
     let sawTransient = false;
-    const startPointer = Number.isInteger(campaign.pointer) ? campaign.pointer : 0;
     
-    // For this recipient, start from the current pointer and try accounts in order
-    // This ensures each recipient gets a different starting account for rotation
-    const order = Array.from({ length: totalAccounts }, (_, i) => (startPointer + i) % totalAccounts);
+    // Calculate which account to use based on recipient's position in the campaign
+    // This ensures: 1st recipient = Account A, 2nd = Account B, 3rd = Account C, 4th = Account A, etc.
+    const accountIndex = recipientIndex % totalAccounts;
+    const primaryAccount = accounts[accountIndex];
     
-    // Debug logging to see what's happening with rotation
-    logger.debug('Account rotation debug', { 
-      campaignId, 
-      to, 
-      startPointer, 
-      totalAccounts, 
-      order, 
-      currentPointer: campaign.pointer 
-    });
+    logger.info(`Recipient ${to} (position ${recipientIndex}) will use account ${accountIndex}: ${primaryAccount.email}`);
+    
+
 
     // render template
     const { BASE_URL, SECRET_KEY } = require('../config');
@@ -200,75 +186,89 @@ module.exports = {
     });
     const html = `${rewritten}\n${openPixel}`;
 
-    for (const idx of order) {
-      let account = accounts[idx];
-      // skip disabled or out of quota
-      if (account.disabledUntil && new Date(account.disabledUntil) > new Date()) {
-        continue;
-      }
-      if (!account.remaining || account.remaining <= 0) {
-        continue;
-      }
-
-      // ensure token if oauth2
-      account = await ensureValidAccessTokenForAccount(account);
-
-      const mailOptions = {
-        from: account.email,
-        to,
-        subject: campaign.subject,
-        html
-      };
-
-      try {
-        const transporter = getTransportForAccount(account);
-        await transporter.sendMail(mailOptions);
-        account.remaining = (account.remaining || account.maxPerCycle) - 1;
-        account.failCount = 0;
-        // advance pointer to the next account for the next recipient
-        // This ensures strict round-robin: A -> B -> C -> A -> B -> C...
-        const oldPointer = campaign.pointer;
-        campaign.pointer = (startPointer + 1) % totalAccounts;
-        
-        // Debug logging for pointer update
-        logger.debug('Pointer updated', { 
-          campaignId, 
-          to, 
-          oldPointer, 
-          newPointer: campaign.pointer,
-          startPointer,
-          totalAccounts
-        });
-        campaign.recipients[recipientIndex].sent = true;
-        campaign.recipients[recipientIndex].failed = false;
-        campaign.recipients[recipientIndex].lastError = null;
-        // recompute progress deterministically
-        const progress = computeProgress(campaign);
-        const patch = { accounts, pointer: campaign.pointer, recipients: campaign.recipients, ...progress };
-        await storage.updateCampaign(campaignId, patch);
-        await finalizeCampaignIfDone(campaignId);
-        logger.info(`Email sent: ${to} via ${account.email}`);
-        await _sleep(SEND_DELAY_MS);
-        sentOk = true;
-        break;
-      } catch (err) {
-        logger.error('Send failed', { campaignId, to, account: account.email, err: err.message || err });
-        account.failCount = (account.failCount || 0) + 1;
-        if (account.failCount >= ACCOUNT_FAILURE_LIMIT) {
-          account.disabledUntil = new Date(Date.now() + ACCOUNT_DISABLE_MINUTES * 60 * 1000);
-          account.failCount = 0;
-          logger.debug('Account temporarily disabled', { account: account.email, until: account.disabledUntil });
+    // Try the primary account first
+    let account = primaryAccount;
+    
+    // Check if primary account is available
+    if (account.disabledUntil && new Date(account.disabledUntil) > new Date()) {
+      logger.info(`Primary account ${account.email} is disabled, trying next available account`);
+      // Find next available account
+      for (let i = 1; i < totalAccounts; i++) {
+        const nextIndex = (accountIndex + i) % totalAccounts;
+        const nextAccount = accounts[nextIndex];
+        if (!nextAccount.disabledUntil || new Date(nextAccount.disabledUntil) <= new Date()) {
+          if (nextAccount.remaining && nextAccount.remaining > 0) {
+            account = nextAccount;
+            logger.info(`Switched to account: ${account.email}`);
+            break;
+          }
         }
-        // do not advance pointer on failure; continue to next account in the computed order
-        const message = (err && err.message) ? err.message : String(err);
-        const permanent = /Missing credentials|Invalid login|EAUTH|Username and Password not accepted|ENOTFOUND|ECONNREFUSED/i.test(message);
-        if (!permanent) sawTransient = true;
-        campaign.recipients[recipientIndex].lastError = message;
-        const progressFail = computeProgress(campaign);
-        await storage.updateCampaign(campaignId, { accounts, pointer: campaign.pointer, recipients: campaign.recipients, ...progressFail });
-        await finalizeCampaignIfDone(campaignId);
-        continue;
       }
+    }
+    
+    // Check if account has remaining quota
+    if (!account.remaining || account.remaining <= 0) {
+      logger.info(`Account ${account.email} has no remaining quota, trying next available account`);
+      // Find next available account with quota
+      for (let i = 1; i < totalAccounts; i++) {
+        const nextIndex = (accountIndex + i) % totalAccounts;
+        const nextAccount = accounts[nextIndex];
+        if (nextAccount.remaining && nextAccount.remaining > 0) {
+          if (!nextAccount.disabledUntil || new Date(nextAccount.disabledUntil) <= new Date()) {
+            account = nextAccount;
+            logger.info(`Switched to account with quota: ${account.email}`);
+            break;
+          }
+        }
+      }
+    }
+
+    // ensure token if oauth2
+    account = await ensureValidAccessTokenForAccount(account);
+
+    const mailOptions = {
+      from: account.email,
+      to,
+      subject: campaign.subject,
+      html
+    };
+
+    try {
+      const transporter = getTransportForAccount(account);
+      await transporter.sendMail(mailOptions);
+      account.remaining = (account.remaining || account.maxPerCycle) - 1;
+      account.failCount = 0;
+      
+      campaign.recipients[recipientIndex].sent = true;
+      campaign.recipients[recipientIndex].failed = false;
+      campaign.recipients[recipientIndex].lastError = null;
+      
+      // recompute progress deterministically
+      const progress = computeProgress(campaign);
+      const patch = { accounts, recipients: campaign.recipients, ...progress };
+      await storage.updateCampaign(campaignId, patch);
+      await finalizeCampaignIfDone(campaignId);
+      
+      logger.info(`Email sent: ${to} via ${account.email}`);
+      await _sleep(SEND_DELAY_MS);
+      sentOk = true;
+    } catch (err) {
+      logger.error('Send failed', { campaignId, to, account: account.email, err: err.message || err });
+      account.failCount = (account.failCount || 0) + 1;
+      if (account.failCount >= ACCOUNT_FAILURE_LIMIT) {
+        account.disabledUntil = new Date(Date.now() + ACCOUNT_DISABLE_MINUTES * 60 * 1000);
+        account.failCount = 0;
+        logger.debug('Account temporarily disabled', { account: account.email, until: account.disabledUntil });
+      }
+      
+      const message = (err && err.message) ? err.message : String(err);
+      const permanent = /Missing credentials|Invalid login|EAUTH|Username and Password not accepted|ENOTFOUND|ECONNREFUSED/i.test(message);
+      if (!permanent) sawTransient = true;
+      campaign.recipients[recipientIndex].lastError = message;
+      
+      const progressFail = computeProgress(campaign);
+      await storage.updateCampaign(campaignId, { accounts, recipients: campaign.recipients, ...progressFail });
+      await finalizeCampaignIfDone(campaignId);
     }
 
     if (!sentOk) {
